@@ -227,6 +227,8 @@ def _brew_text(b: dict) -> str:
         parts.append(f"coffee in cup {b['coffee_in_cup_g']:g} g")
     parts.append(f"{b['elapsed_s']} s elapsed")
     text = " · ".join(parts)
+    if b["machine_state"] == "awaiting_confirm" and b["elapsed_s"] > 90 and not b["done"]:
+        text += "\nThe machine is waiting for confirmation: press its button to start the brew."
     if b["error"]:
         text += f"\n⚠️ {b['error']}"
     return text

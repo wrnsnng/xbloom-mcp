@@ -14,7 +14,9 @@ from dataclasses import dataclass, field
 
 from bleak import BleakScanner
 from xbloom_ble import Recipe
+from xbloom_ble import client as xbc
 from xbloom_ble.client import XBloomClient, XBloomError
+from xbloom_ble.protocol import build_commit
 from xbloom_ble.telemetry import StatusEvent
 
 log = logging.getLogger(__name__)
@@ -29,6 +31,8 @@ CONNECT_ATTEMPTS = 3
 # Last-resort cap on a whole connect sequence (e.g. macOS Bluetooth permission missing).
 CONNECT_CAP_S = CONNECT_ATTEMPTS * (SCAN_TIMEOUT_S + 20) + 10
 LOAD_TIMEOUT_S = 45.0
+# How long to watch for the machine's first reaction to commit.
+COMMIT_WATCH_S = 15.0
 
 
 @dataclass
@@ -57,6 +61,25 @@ class BrewState:
             "error": self.error,
             "done": self.done,
         }
+
+
+async def commit_only(client: XBloomClient, on_event: Callable[[StatusEvent], None]) -> StatusEvent | None:
+    """Start the armed brew with commit (0x42) alone.
+
+    xbloom-ble's start() sends a 0x46 "nudge" if it sees no reaction within 8 s. On
+    firmware V12.0D.500 the machine always proceeds by itself after commit, but grinds
+    silently for ~20 s first, and a 0x46 arriving then ABORTS the brew (seen on
+    2026-10-11: stopped mid-grind). So never nudge; just report what the machine does.
+    Uses the library's internals, which is why xbloom-ble is pinned to one commit.
+    """
+    acted = {xbc.STATE_STARTING, xbc.STATE_NO_WATER, xbc.STATE_NO_BEANS} | xbc.BREWING_STATES
+    await client._start_notify()  # noqa: SLF001
+    try:
+        client.reset_water_window()
+        await client._write_cmd(build_commit(), "0x42 commit")  # noqa: SLF001
+        return await client._drain_for_any(acted, COMMIT_WATCH_S, on_event)  # noqa: SLF001
+    finally:
+        await client._stop_notify()  # noqa: SLF001
 
 
 def _friendly(exc: BaseException) -> str:
@@ -187,10 +210,11 @@ class Machine:
                                 await asyncio.sleep(3.0)
                                 continue
                             raise
-                        st.phase = "starting"
-                        ev = await client.start(on_event=record)
-                        record(ev)
-                        if ev.state_name in ("no_water", "no_beans"):
+                        st.phase = "starting (grinds silently for ~20 s, then pours)"
+                        ev = await commit_only(client, record)
+                        if ev is not None:
+                            record(ev)
+                        if ev is not None and ev.state_name in ("no_water", "no_beans"):
                             what = ("no water in the tank" if ev.state_name == "no_water"
                                     else "no beans in the grinder")
                             st.error = f"The machine refused to brew: {what}."
