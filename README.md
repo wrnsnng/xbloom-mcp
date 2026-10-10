@@ -59,6 +59,35 @@ ZIP** and unzip it), then from inside the folder:
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
+### Or let an AI assistant set it up
+
+Paste this into [Claude Code](https://claude.com/claude-code) (or another coding assistant
+that can run commands) on the computer next to your xBloom:
+
+````text
+Set up xbloom-mcp on this computer so I can brew on my xBloom Studio from Claude.
+Repo: https://github.com/wrnsnng/xbloom-mcp
+
+1. Clone the repo (or use it if it's already here) and read README.md first.
+2. Run the setup script for this OS: ./setup.sh on macOS/Linux, or
+   powershell -ExecutionPolicy Bypass -File .\setup.ps1 on Windows.
+   It's interactive. Relay its questions to me and type my answers; don't guess.
+3. Before the Bluetooth scan, tell me to switch the xBloom on, close the xBloom
+   phone app and turn my phone's Bluetooth off, and wait until I confirm.
+4. When it asks for a hostname, ask me which domain I have on Cloudflare and
+   which subdomain to use (e.g. coffee.example.com).
+5. The Cloudflare login opens a browser that I complete myself. Wait for me.
+6. On macOS, tell me to click Allow when "xBloom Bridge" asks for Bluetooth.
+7. If the final check can't reach the machine, follow the hint it prints and the
+   README's Troubleshooting section, then run the check command again.
+8. Finish by showing me how to add the connector in Claude (URL, "No sign-in",
+   and the Authorization header).
+
+Rules: never start a brew; I'll test that myself from Claude with the machine
+ready. Show the connector key only to me: don't paste it anywhere else, commit
+it, or put it in files outside the settings folder the script uses.
+````
+
 The script walks you through four steps:
 
 1. **Find your xBloom.** Turn the machine on, close the xBloom phone app and turn the
