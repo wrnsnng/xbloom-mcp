@@ -16,7 +16,7 @@ from bleak import BleakScanner
 from xbloom_ble import Recipe
 from xbloom_ble import client as xbc
 from xbloom_ble.client import XBloomClient, XBloomError
-from xbloom_ble.protocol import build_commit
+from xbloom_ble.protocol import build_commit, build_session_start, build_status_query
 from xbloom_ble.telemetry import StatusEvent
 
 log = logging.getLogger(__name__)
@@ -137,7 +137,16 @@ class Machine:
             return {"reachable": True, "state": "brewing", "brew": self.current.as_dict()}  # type: ignore[union-attr]
         async def probe() -> dict:
             async with await self._connect() as client:
-                await client.open_session(settle=2.0)
+                # Same handshake as a recipe load (session start + status query), which
+                # makes the machine report its state; listening alone gets nothing when idle.
+                await client._start_notify()  # noqa: SLF001
+                try:
+                    await client._write_cmd(build_session_start(), "a4 session start")  # noqa: SLF001
+                    await asyncio.sleep(0.5)
+                    await client._write_cmd(build_status_query(), "0x56 status query")  # noqa: SLF001
+                    await asyncio.sleep(2.0)
+                finally:
+                    await client._stop_notify()  # noqa: SLF001
                 last = client._last_status  # noqa: SLF001 - library exposes no getter
                 return {"reachable": True,
                         "state": last.state_name if last else "unknown",
