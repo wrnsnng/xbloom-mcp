@@ -171,7 +171,7 @@ class Machine:
                             return
                     except XBloomError:
                         raise
-                    except Exception as exc:  # noqa: BLE001
+                    except Exception:  # noqa: BLE001
                         if attempt == 1 and st.phase == "connecting":
                             await asyncio.sleep(3.0)
                             continue

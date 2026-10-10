@@ -1057,12 +1057,31 @@ wheels = [
 [[package]]
 name = "xbloom-ble"
 version = "2.3.0"
-source = { git = "https://github.com/jack-song/xbloom-ble?rev=e98402275a5724d47a877eb15a2d60ae25eeff04#e98402275a5724d47a877eb15a2d60ae25eeff04" }
+source = { url = "https://github.com/jack-song/xbloom-ble/archive/e98402275a5724d47a877eb15a2d60ae25eeff04.tar.gz" }
 dependencies = [
     { name = "bleak" },
     { name = "platformdirs" },
     { name = "pyyaml" },
 ]
+sdist = { hash = "sha256:0579e2a618245c6981c16d6902380de63b3c10d7d1e1236b5dcec0c16581259b" }
+
+[package.metadata]
+requires-dist = [
+    { name = "bleak", specifier = ">=0.21" },
+    { name = "cryptography", marker = "extra == 'cloud'", specifier = ">=41" },
+    { name = "cryptography", marker = "extra == 'dev'", specifier = ">=41" },
+    { name = "platformdirs", specifier = ">=3" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4" },
+    { name = "pyyaml", specifier = ">=6" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
+    { name = "textual", marker = "extra == 'dev'", specifier = ">=1" },
+    { name = "textual", marker = "extra == 'tui'", specifier = ">=1" },
+    { name = "textual-plotext", marker = "extra == 'dev'", specifier = ">=1" },
+    { name = "textual-plotext", marker = "extra == 'tui'", specifier = ">=1" },
+    { name = "vulture", marker = "extra == 'dev'", specifier = ">=2" },
+]
+provides-extras = ["cloud", "tui", "dev"]
 
 [[package]]
 name = "xbloom-mcp"
@@ -1078,5 +1097,5 @@ dependencies = [
 requires-dist = [
     { name = "mcp", extras = ["cli"], specifier = ">=1.20" },
     { name = "uvicorn", specifier = ">=0.54.0" },
-    { name = "xbloom-ble", git = "https://github.com/jack-song/xbloom-ble?rev=e98402275a5724d47a877eb15a2d60ae25eeff04" },
+    { name = "xbloom-ble", url = "https://github.com/jack-song/xbloom-ble/archive/e98402275a5724d47a877eb15a2d60ae25eeff04.tar.gz" },
 ]

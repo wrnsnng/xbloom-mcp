@@ -1,161 +1,45 @@
-#!/bin/zsh
-# One-time setup for xbloom-mcp on a Mac near your xBloom Studio.
-# Safe to re-run: it keeps your existing secret and settings unless you change them.
-set -e
-cd "${0:A:h}"
-REPO=$PWD
-CFG=~/.config/xbloom-mcp
-ENV=$CFG/env
-TUNNEL_LABEL=local.xbloom-tunnel
+#!/usr/bin/env bash
+# xbloom-mcp setup for macOS and Linux. Installs uv and cloudflared if needed, then runs
+# the interactive setup. Also: ./setup.sh check | rotate-key | uninstall [--all]
+set -euo pipefail
+cd "$(dirname "$0")"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-bold() { print -P "%B$1%b"; }
-ask() { local a; read "a?$1 "; print -r -- "$a"; }
-setting() { [[ -f $ENV ]] && grep -E "^$1=" $ENV | cut -d= -f2- || true; }
-
-check_machine() {
-  uv run python - "$(setting XBLOOM_MCP_SECRET)" <<'PY' || print "Server not responding; see ~/Library/Logs/xbloom-mcp.log"
-import asyncio, sys
-from mcp import ClientSession
-import httpx2
-from mcp.client.streamable_http import streamable_http_client
-async def main():
-    http = httpx2.AsyncClient(headers={"Authorization": f"Bearer {sys.argv[1]}"}, timeout=60)
-    async with streamable_http_client("http://127.0.0.1:8787/mcp", http_client=http) as (r, w, *_):
-        async with ClientSession(r, w) as s:
-            await s.initialize()
-            print((await s.call_tool("machine_status", {})).content[0].text)
-asyncio.run(main())
-PY
-}
-
-connector_info() {
-  print "\n  URL:           https://$(setting XBLOOM_MCP_HOSTS)/mcp"
-  print "  Authentication: No sign-in"
-  print "  Request header: Authorization = Bearer $(setting XBLOOM_MCP_SECRET)\n"
-  print "Treat the header value like a password: anyone with it can brew on your machine."
-}
-
-# ./setup.sh rotate-key — issue a new key (the old one stops working immediately).
-if [[ $1 == rotate-key ]]; then
-  [[ -f $ENV ]] || { print "Run ./setup.sh first."; exit 1; }
-  sed -i '' "s/^XBLOOM_MCP_SECRET=.*/XBLOOM_MCP_SECRET=$(openssl rand -hex 24)/" $ENV
-  set -- check
-  ROTATED=1
-fi
-
-# ./setup.sh check — restart the bridge and test the machine connection.
-if [[ $1 == check ]]; then
-  set +e
-  pkill -f run-server.sh; pkill -f "bin/xbloom-mcp"; sleep 1
-  open "$HOME/Applications/xBloom Bridge.app"; sleep 6
-  check_machine
-  [[ -n $ROTATED ]] && print "\nNew key issued. Update the header on every Claude connector:"
-  connector_info
-
-  exit 0
-fi
-
-bold "xbloom-mcp setup"
-print "This connects Claude to your xBloom over Bluetooth, from this Mac.\n"
-
-# 1. Tools
-for tool in uv cloudflared; do
-  if ! command -v $tool >/dev/null; then
-    if command -v brew >/dev/null; then
-      print "Installing $tool…"; brew install $tool
-    else
-      print "Please install Homebrew (https://brew.sh), then re-run ./setup.sh"; exit 1
-    fi
+install_uv() {
+  echo "Installing uv (Python tool runner)…"
+  if [[ $(uname) == Darwin ]] && command -v brew >/dev/null; then
+    brew install uv
+  else
+    curl -LsSf https://astral.sh/uv/install.sh | sh
   fi
-done
-command -v clang >/dev/null || { print "Run: xcode-select --install   (then re-run ./setup.sh)"; exit 1; }
+}
+
+install_cloudflared() {
+  echo "Installing cloudflared (Cloudflare Tunnel)…"
+  if [[ $(uname) == Darwin ]]; then
+    command -v brew >/dev/null || { echo "Install Homebrew (https://brew.sh) and re-run."; exit 1; }
+    brew install cloudflared
+  else
+    case $(uname -m) in
+      x86_64) arch=amd64 ;;
+      aarch64|arm64) arch=arm64 ;;
+      armv7l) arch=arm ;;
+      *) echo "Unsupported CPU $(uname -m); install cloudflared manually and re-run."; exit 1 ;;
+    esac
+    mkdir -p "$HOME/.local/bin"
+    curl -fsSL -o "$HOME/.local/bin/cloudflared" \
+      "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$arch"
+    chmod +x "$HOME/.local/bin/cloudflared"
+  fi
+}
+
+if [[ ${1:-setup} == setup ]]; then
+  command -v uv >/dev/null || install_uv
+  command -v cloudflared >/dev/null || install_cloudflared
+  if [[ $(uname) == Darwin ]] && ! command -v clang >/dev/null; then
+    echo "Run: xcode-select --install   (then re-run ./setup.sh)"; exit 1
+  fi
+fi
+
 uv sync --frozen -q
-
-# 2. Find the machine
-umask 077; mkdir -p $CFG
-ADDRESS=$(setting XBLOOM_ADDRESS)
-if [[ -z $ADDRESS ]]; then
-  bold "\n1/4  Find your xBloom"
-  print "Turn the xBloom on. Close the xBloom phone app and turn your phone's Bluetooth off"
-  print "(the machine only accepts one connection). If macOS asks to let Terminal use"
-  print "Bluetooth, click Allow.\n"
-  ask "Press Enter to scan…" >/dev/null
-  uv run xbloom scan --timeout 10 | tee /tmp/xbloom-scan.txt
-  ADDRESS=$(grep -Eo '^  [0-9A-F-]{17,}' /tmp/xbloom-scan.txt | head -1 | tr -d ' ')
-  [[ -n $ADDRESS ]] || { print "No machine found. Check the steps above and re-run."; exit 1; }
-  print "Using $ADDRESS"
-fi
-
-# 3. Domain
-HOST=$(setting XBLOOM_MCP_HOSTS)
-if [[ -z $HOST ]]; then
-  bold "\n2/4  Pick a web address"
-  print "Claude reaches this Mac through a free Cloudflare Tunnel. You need a domain on"
-  print "a (free) Cloudflare account. Pick a subdomain, e.g. coffee.example.com"
-  HOST=$(ask "Hostname:")
-  [[ $HOST == *.* ]] || { print "That doesn't look like a hostname."; exit 1; }
-fi
-
-SECRET=$(setting XBLOOM_MCP_SECRET)
-[[ -n $SECRET ]] || SECRET=$(openssl rand -hex 24)
-cat > $ENV <<EOF
-XBLOOM_ADDRESS=$ADDRESS
-XBLOOM_MCP_HOSTS=$HOST
-XBLOOM_MCP_SECRET=$SECRET
-EOF
-
-# 4. Tunnel
-bold "\n3/4  Cloudflare Tunnel"
-if [[ -f $CFG/cloudflared.yml || -f $CFG/tunnel-token ]]; then
-  print "Tunnel already configured."
-else
-  [[ -f ~/.cloudflared/cert.pem ]] || { print "A browser window opens: log in and pick your domain."; cloudflared tunnel login; }
-  cloudflared tunnel info xbloom-mcp >/dev/null 2>&1 || cloudflared tunnel create xbloom-mcp
-  TID=$(cloudflared tunnel info xbloom-mcp 2>/dev/null | grep -Eo '[0-9a-f]{8}-[0-9a-f-]{27}' | head -1)
-  cp ~/.cloudflared/$TID.json $CFG/tunnel-credentials.json
-  cat > $CFG/cloudflared.yml <<EOF
-tunnel: $TID
-credentials-file: $CFG/tunnel-credentials.json
-ingress:
-  - hostname: $HOST
-    service: http://127.0.0.1:8787
-  - service: http_status:404
-EOF
-  cloudflared tunnel route dns xbloom-mcp $HOST || print "(DNS record may already exist; continuing)"
-fi
-
-PLIST=~/Library/LaunchAgents/$TUNNEL_LABEL.plist
-cat > $PLIST <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>$TUNNEL_LABEL</string>
-  <key>ProgramArguments</key><array><string>$REPO/deploy/run-tunnel.sh</string></array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>ThrottleInterval</key><integer>10</integer>
-  <key>StandardOutPath</key><string>$HOME/Library/Logs/xbloom-tunnel.log</string>
-  <key>StandardErrorPath</key><string>$HOME/Library/Logs/xbloom-tunnel.log</string>
-</dict></plist>
-EOF
-launchctl bootout gui/$(id -u)/$TUNNEL_LABEL 2>/dev/null || true
-launchctl bootstrap gui/$(id -u) $PLIST
-
-# 5. Bridge app
-bold "\n4/4  xBloom Bridge app"
-./deploy/build-app.sh
-APP="$HOME/Applications/xBloom Bridge.app"
-osascript -e "tell application \"System Events\" to delete (every login item whose name is \"xBloom Bridge\")" >/dev/null 2>&1 || true
-osascript -e "tell application \"System Events\" to make login item at end with properties {path:\"$APP\", hidden:true}" >/dev/null \
-  && print "Added to Login Items (starts automatically)."
-open "$APP"
-sleep 5
-
-print "\nChecking the machine through the server (macOS may now ask whether"
-print "\"xBloom Bridge\" can use Bluetooth: click Allow)…"
-check_machine
-
-bold "\nDone. Add a custom connector in Claude (Settings → Connectors) with:"
-connector_info
-print "If the check above said it couldn't reach the machine, allow xBloom Bridge in"
-print "System Settings → Privacy & Security → Bluetooth, then run: ./setup.sh check"
+exec uv run --frozen xbloom-mcp "${@:-setup}"

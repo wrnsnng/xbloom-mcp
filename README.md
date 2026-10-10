@@ -18,38 +18,63 @@ Brew coffee on an **xBloom Studio** from Claude: on your phone, the web or the d
 ## How it works
 
 ```
-Claude (anywhere) ──HTTPS──▶ Cloudflare Tunnel ──▶ this server on a Mac at home ──Bluetooth──▶ xBloom
+Claude (anywhere) ──HTTPS──▶ Cloudflare Tunnel ──▶ this server on a computer at home ──Bluetooth──▶ xBloom
 ```
 
-The Mac has to be within Bluetooth range of the machine (same room or next room) and stay on.
+The computer has to be within Bluetooth range of the machine (same room or next room) and
+stay on. It can be a Mac, a Windows PC, or a Linux box such as a Raspberry Pi.
+
+| | Status |
+|---|---|
+| macOS | Tested on a Mac mini, firmware `V12.0D.500` |
+| Linux | Setup and server tested; Bluetooth not yet tested on real hardware |
+| Windows | Written for, not yet tested. Reports welcome! |
 
 ## What you need
 
-- A Mac near the xBloom (any Mac on macOS 13+; a Mac mini that stays on is ideal).
+- A computer near the xBloom with Bluetooth Low Energy:
+  - **macOS** 13+, with [Homebrew](https://brew.sh).
+  - **Windows** 10/11, with `winget` (built in; otherwise "App Installer" from the Store).
+  - **Linux** with systemd and BlueZ (Raspberry Pi OS, Ubuntu, Debian, Fedora...).
 - A free [Cloudflare](https://dash.cloudflare.com/sign-up) account with a domain on it.
   You'll use a subdomain like `coffee.yourdomain.com`.
 - Claude on any plan that supports custom connectors.
-- [Homebrew](https://brew.sh) (the setup script installs `uv` and `cloudflared` with it).
+
+The setup script installs everything else (`uv` for Python, `cloudflared` for the tunnel).
 
 ## Setup (about 10 minutes)
 
+Download the repo (`git clone https://github.com/wrnsnng/xbloom-mcp`, or **Code → Download
+ZIP** and unzip it), then from inside the folder:
+
+**macOS / Linux** (Terminal):
+
 ```bash
-git clone <this repo> xbloom-mcp
-cd xbloom-mcp
 ./setup.sh
+```
+
+**Windows** (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
 The script walks you through four steps:
 
 1. **Find your xBloom.** Turn the machine on, close the xBloom phone app and turn the
-   phone's Bluetooth off (the machine only accepts one connection). Allow Terminal to use
-   Bluetooth if macOS asks.
+   phone's Bluetooth off (the machine only accepts one connection). On macOS, allow
+   Terminal to use Bluetooth if asked.
 2. **Pick a web address**, e.g. `coffee.yourdomain.com`.
 3. **Cloudflare Tunnel.** A browser opens; log in and choose your domain. The script creates
-   the tunnel and the DNS record, and installs a background service for it.
-4. **xBloom Bridge app.** Builds a tiny background app in `~/Applications` that holds the
-   Bluetooth permission and runs the server. It's added to Login Items. When macOS asks
-   whether **"xBloom Bridge" can use Bluetooth, click Allow.**
+   the tunnel and the DNS record.
+4. **Start automatically.** The server and tunnel are set up to run in the background
+   and start by themselves:
+   - **macOS:** a tiny "xBloom Bridge" app in `~/Applications`, added to Login Items. It
+     exists to hold the Bluetooth permission. When macOS asks whether **"xBloom Bridge"
+     can use Bluetooth, click Allow.**
+   - **Windows:** a scheduled task that starts at logon, with no window.
+   - **Linux:** a systemd user service (`systemctl --user status xbloom-mcp`), set to
+     start at boot.
 
 At the end it prints your connector details:
 
@@ -60,10 +85,11 @@ Request header: Authorization = Bearer <long-key>
 ```
 
 **Treat the key like a password.** Anyone who has it can brew on your machine. If it
-leaks, run `./setup.sh rotate-key` and update the header on each connector.
+leaks, run `./setup.sh rotate-key` (Windows: `.\setup.ps1 rotate-key`) and update the
+header on each connector.
 
-If the final check says it can't reach the machine, turn on **xBloom Bridge** in
-System Settings → Privacy & Security → Bluetooth, then run `./setup.sh check`.
+If the final check says it can't reach the machine, it prints what to check for your OS;
+fix it, then run `./setup.sh check` (Windows: `.\setup.ps1 check`).
 
 ## Add it to Claude
 
@@ -103,29 +129,39 @@ reach the machine, close the xBloom app on whoever's phone is nearby.
 
 ## Files and logs
 
-| What | Where |
-|---|---|
-| Settings and secrets | `~/.config/xbloom-mcp/` |
-| Recipe library (SQLite) | `~/.local/share/xbloom-mcp/recipes.db` |
-| Server log | `~/Library/Logs/xbloom-mcp.log` |
-| Tunnel log | `~/Library/Logs/xbloom-tunnel.log` |
+| What | macOS / Linux | Windows |
+|---|---|---|
+| Settings and secrets | `~/.config/xbloom-mcp/` | `%APPDATA%\xbloom-mcp\` |
+| Recipe library (SQLite) | `~/.local/share/xbloom-mcp/recipes.db` | `%APPDATA%\xbloom-mcp\data\recipes.db` |
+| Logs (`xbloom-mcp.log`, `xbloom-tunnel.log`) | macOS: `~/Library/Logs/`, Linux: `~/.local/state/xbloom-mcp/` | `%APPDATA%\xbloom-mcp\logs\` |
 
 ## Troubleshooting
 
-- **"Couldn't reach the xBloom"**: the machine is off, a phone app is connected, or xBloom
-  Bridge lacks the Bluetooth permission (see above). Run `./setup.sh check`.
+Commands below use `./setup.sh`; on Windows use `.\setup.ps1` instead.
+
+- **"Couldn't reach the xBloom"**: the machine is off, or a phone app is holding its one
+  Bluetooth connection. Turning off Bluetooth for the xBloom app in the phone's settings
+  stops that for good. On macOS, xBloom Bridge also needs the Bluetooth permission. Then
+  run `./setup.sh check`.
 - **Claude can't connect**: make sure the header value starts with `Bearer ` (with the
-  space). Otherwise check `~/Library/Logs/xbloom-tunnel.log`, and that
-  the Mac is awake (System Settings → Energy → prevent automatic sleeping).
+  space). Otherwise look at `xbloom-tunnel.log`, and make sure the computer doesn't go to
+  sleep (macOS: System Settings → Energy; Windows: Settings → System → Power).
+- **Linux: Bluetooth errors.** Install and start BlueZ (`sudo apt install bluez`); on a
+  Raspberry Pi add yourself to the `bluetooth` group. `journalctl --user -u xbloom-mcp`
+  shows the service's output.
+- **Windows: PowerShell won't run the script.** Use the `-ExecutionPolicy Bypass` command
+  above.
 - **Machine says no beans / no water**: Claude will tell you; it cancels the brew.
 - **After updating this repo** (`git pull`): run `./setup.sh check` to restart the server.
 
 ## Uninstall
 
 ```bash
-./uninstall.sh          # removes the app, login item and tunnel service; keeps recipes
-./uninstall.sh --all    # also deletes recipes and settings
+./setup.sh uninstall          # removes the autostart; keeps recipes and settings
+./setup.sh uninstall --all    # also deletes recipes and settings
 ```
+
+(Windows: `.\setup.ps1 uninstall`, and `.\setup.ps1 uninstall --all`.)
 
 ## Credits
 

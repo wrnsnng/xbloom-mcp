@@ -12,13 +12,14 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field
 from xbloom_ble import Recipe, RecipeError
 
+from . import config
 from .machine import BrewState, Machine
 from .store import Store
 
 log = logging.getLogger(__name__)
 
 GUIDE = (Path(__file__).parent / "guide.md").read_text(encoding="utf-8")
-DATA_DIR = Path(os.environ.get("XBLOOM_MCP_DATA", Path.home() / ".local/share/xbloom-mcp"))
+DATA_DIR = Path(os.environ.get("XBLOOM_MCP_DATA") or config.DATA_DIR)
 ADDRESS = os.environ.get("XBLOOM_ADDRESS", "")
 
 store = Store(DATA_DIR / "recipes.db")
@@ -284,7 +285,7 @@ def brew_feedback(feedback: str, brew_id: int | None = None) -> str:
     return f"Noted on brew #{bid}."
 
 
-def main() -> None:
+def serve() -> None:
     import uvicorn
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -292,7 +293,7 @@ def main() -> None:
     if len(secret) < 24:
         raise SystemExit("Set XBLOOM_MCP_SECRET (24+ random chars); clients send it as a Bearer token.")
     hosts = [h.strip() for h in os.environ.get("XBLOOM_MCP_HOSTS", "").split(",") if h.strip()]
-    port = int(os.environ.get("PORT", "8787"))
+    port = int(os.environ.get("PORT", config.PORT))
     app = mcp.streamable_http_app(
         streamable_http_path="/mcp",
         transport_security=TransportSecuritySettings(

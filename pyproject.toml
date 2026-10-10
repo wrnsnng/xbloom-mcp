@@ -21,4 +21,4 @@ requires = ["uv_build>=0.12.7,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.uv.sources]
-xbloom-ble = { git = "https://github.com/jack-song/xbloom-ble", rev = "e98402275a5724d47a877eb15a2d60ae25eeff04" }
+xbloom-ble = { url = "https://github.com/jack-song/xbloom-ble/archive/e98402275a5724d47a877eb15a2d60ae25eeff04.tar.gz" }

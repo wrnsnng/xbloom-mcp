@@ -1,10 +1,9 @@
 #!/bin/zsh
-# Run by "xBloom Bridge.app". Restarts the server if it ever exits.
-# Settings and secrets live in ~/.config/xbloom-mcp/env (written by setup.sh).
-set -a; source ~/.config/xbloom-mcp/env; set +a
+# Run by "xBloom Bridge.app" (macOS), which holds the Bluetooth permission.
+# run-all supervises the server and tunnel; this loop restarts run-all itself.
 cd "${0:A:h:h}"
-UV=$(command -v uv || echo /opt/homebrew/bin/uv)
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 while true; do
-  "$UV" run --frozen xbloom-mcp
+  uv run --frozen xbloom-mcp run-all
   sleep 5
 done
