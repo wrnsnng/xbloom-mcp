@@ -273,7 +273,12 @@ async def brew_status() -> str:
 
 @mcp.tool()
 async def cancel_brew() -> str:
-    """Stop the machine immediately (abort a running brew or clear a loaded recipe)."""
+    """Stop the machine immediately: aborts a running brew or clears a loaded recipe.
+
+    Only call this when the person explicitly asks to stop. Never call it to tidy up
+    after a brew, or because brew_status looks stuck or lost contact: the machine
+    finishes a started brew on its own, and cancelling would ruin it.
+    """
     return await machine.cancel()
 
 

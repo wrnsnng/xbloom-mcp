@@ -33,6 +33,11 @@ CONNECT_CAP_S = CONNECT_ATTEMPTS * (SCAN_TIMEOUT_S + 20) + 10
 LOAD_TIMEOUT_S = 45.0
 # How long to watch for the machine's first reaction to commit.
 COMMIT_WATCH_S = 15.0
+# The scale streams readings about once a second while connected. This long without
+# any frame means the link has died (weak signal); the brew carries on regardless.
+SILENCE_S = 45.0
+LOST_CONTACT = ("lost contact with the machine during the brew (weak Bluetooth signal). "
+                "The machine finishes the brew on its own: check the cup. Don't cancel.")
 
 
 @dataclass
@@ -187,7 +192,10 @@ class Machine:
 
     async def _run(self, recipe: Recipe, st: BrewState,
                    on_finish: Callable[[BrewState], None]) -> None:
+        last_frame = [time.time()]
+
         def record(ev: StatusEvent) -> None:
+            last_frame[0] = time.time()
             if ev.is_heartbeat and ev.water_g is None and ev.coffee_g is None:
                 return
             if ev.state_name not in ("scale",):
@@ -231,7 +239,19 @@ class Machine:
                             await client.cancel_brew()
                             return
                         st.phase = "brewing"
-                        await client.stream_telemetry(record, duration=BREW_WATCH_S)
+                        last_frame[0] = time.time()
+                        watch = asyncio.create_task(
+                            client.stream_telemetry(record, duration=BREW_WATCH_S))
+                        while not watch.done():
+                            await asyncio.wait({watch}, timeout=2.0)
+                            silent = time.time() - last_frame[0]
+                            if not watch.done() and (not client.is_connected or silent > SILENCE_S):
+                                log.info("lost contact mid-brew (connected=%s, silent %.0fs)",
+                                         client.is_connected, silent)
+                                watch.cancel()
+                                st.phase = LOST_CONTACT
+                                return
+                        watch.result()
                         st.phase = "finished"
                         return
                 raise XBloomError("The machine didn't accept the recipe after clearing it.")
