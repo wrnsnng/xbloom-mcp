@@ -290,15 +290,38 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     secret = os.environ.get("XBLOOM_MCP_SECRET", "")
     if len(secret) < 24:
-        raise SystemExit("Set XBLOOM_MCP_SECRET (24+ random chars); it forms the private URL path.")
+        raise SystemExit("Set XBLOOM_MCP_SECRET (24+ random chars); clients send it as a Bearer token.")
     hosts = [h.strip() for h in os.environ.get("XBLOOM_MCP_HOSTS", "").split(",") if h.strip()]
     port = int(os.environ.get("PORT", "8787"))
     app = mcp.streamable_http_app(
-        streamable_http_path=f"/{secret}/mcp",
+        streamable_http_path="/mcp",
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
             allowed_hosts=[f"127.0.0.1:{port}", f"localhost:{port}", *hosts],
             allowed_origins=["https://claude.ai", "https://claude.com"],
         ),
     )
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(require_bearer(app, secret), host="127.0.0.1", port=port, log_level="warning")
+
+
+def require_bearer(app, secret: str):
+    """ASGI wrapper: reject any HTTP request without `Authorization: Bearer <secret>`.
+
+    Unauthorised requests get a bare 404, so the endpoint doesn't advertise itself
+    (and Claude doesn't mistake it for an OAuth server).
+    """
+    import hmac
+
+    expected = f"Bearer {secret}".encode()
+
+    async def guarded(scope, receive, send):
+        if scope["type"] == "http":
+            auth = dict(scope["headers"]).get(b"authorization", b"")
+            if not hmac.compare_digest(auth, expected):
+                await send({"type": "http.response.start", "status": 404,
+                            "headers": [(b"content-type", b"text/plain")]})
+                await send({"type": "http.response.body", "body": b"Not Found"})
+                return
+        await app(scope, receive, send)
+
+    return guarded

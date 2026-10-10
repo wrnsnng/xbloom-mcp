@@ -16,9 +16,11 @@ check_machine() {
   uv run python - "$(setting XBLOOM_MCP_SECRET)" <<'PY' || print "Server not responding; see ~/Library/Logs/xbloom-mcp.log"
 import asyncio, sys
 from mcp import ClientSession
+import httpx2
 from mcp.client.streamable_http import streamable_http_client
 async def main():
-    async with streamable_http_client(f"http://127.0.0.1:8787/{sys.argv[1]}/mcp") as (r, w, *_):
+    http = httpx2.AsyncClient(headers={"Authorization": f"Bearer {sys.argv[1]}"}, timeout=60)
+    async with streamable_http_client("http://127.0.0.1:8787/mcp", http_client=http) as (r, w, *_):
         async with ClientSession(r, w) as s:
             await s.initialize()
             print((await s.call_tool("machine_status", {})).content[0].text)
@@ -26,13 +28,30 @@ asyncio.run(main())
 PY
 }
 
+connector_info() {
+  print "\n  URL:           https://$(setting XBLOOM_MCP_HOSTS)/mcp"
+  print "  Authentication: No sign-in"
+  print "  Request header: Authorization = Bearer $(setting XBLOOM_MCP_SECRET)\n"
+  print "Treat the header value like a password: anyone with it can brew on your machine."
+}
+
+# ./setup.sh rotate-key — issue a new key (the old one stops working immediately).
+if [[ $1 == rotate-key ]]; then
+  [[ -f $ENV ]] || { print "Run ./setup.sh first."; exit 1; }
+  sed -i '' "s/^XBLOOM_MCP_SECRET=.*/XBLOOM_MCP_SECRET=$(openssl rand -hex 24)/" $ENV
+  set -- check
+  ROTATED=1
+fi
+
 # ./setup.sh check — restart the bridge and test the machine connection.
 if [[ $1 == check ]]; then
   set +e
   pkill -f run-server.sh; pkill -f "bin/xbloom-mcp"; sleep 1
   open "$HOME/Applications/xBloom Bridge.app"; sleep 6
   check_machine
-  print "Connector URL: https://$(setting XBLOOM_MCP_HOSTS)/$(setting XBLOOM_MCP_SECRET)/mcp"
+  [[ -n $ROTATED ]] && print "\nNew key issued. Update the header on every Claude connector:"
+  connector_info
+
   exit 0
 fi
 
@@ -136,8 +155,7 @@ print "\nChecking the machine through the server (macOS may now ask whether"
 print "\"xBloom Bridge\" can use Bluetooth: click Allow)…"
 check_machine
 
-bold "\nDone. Add this as a custom connector in Claude (Settings → Connectors):"
-print "\n  https://$HOST/$SECRET/mcp\n"
-print "Treat that URL like a password: anyone with it can brew on your machine."
+bold "\nDone. Add a custom connector in Claude (Settings → Connectors) with:"
+connector_info
 print "If the check above said it couldn't reach the machine, allow xBloom Bridge in"
 print "System Settings → Privacy & Security → Bluetooth, then run: ./setup.sh check"

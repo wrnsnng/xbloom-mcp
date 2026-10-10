@@ -51,21 +51,26 @@ The script walks you through four steps:
    Bluetooth permission and runs the server. It's added to Login Items. When macOS asks
    whether **"xBloom Bridge" can use Bluetooth, click Allow.**
 
-At the end it prints your connector URL:
+At the end it prints your connector details:
 
 ```
-https://coffee.yourdomain.com/<long-secret>/mcp
+URL:            https://coffee.yourdomain.com/mcp
+Authentication: No sign-in
+Request header: Authorization = Bearer <long-key>
 ```
 
-**Treat that URL like a password.** Anyone who has it can brew on your machine.
+**Treat the key like a password.** Anyone who has it can brew on your machine. If it
+leaks, run `./setup.sh rotate-key` and update the header on each connector.
 
 If the final check says it can't reach the machine, turn on **xBloom Bridge** in
 System Settings → Privacy & Security → Bluetooth, then run `./setup.sh check`.
 
 ## Add it to Claude
 
-In Claude: **Settings → Connectors → Add custom connector**, paste the URL. Do this on each
-person's Claude account who should be able to brew. Then try:
+In Claude: **Settings → Connectors → Add custom connector**. Paste the URL, choose
+**No sign-in**, then under **Request headers** click **Add header**: name `Authorization`,
+value `Bearer <long-key>`. Claude stores the value securely. Do this on each person's
+Claude account who should be able to brew. Then try:
 
 > *"Here's a photo of my new beans. Make me a recipe."*
 >
@@ -109,7 +114,8 @@ reach the machine, close the xBloom app on whoever's phone is nearby.
 
 - **"Couldn't reach the xBloom"**: the machine is off, a phone app is connected, or xBloom
   Bridge lacks the Bluetooth permission (see above). Run `./setup.sh check`.
-- **Claude can't connect to the URL**: check `~/Library/Logs/xbloom-tunnel.log`, and that
+- **Claude can't connect**: make sure the header value starts with `Bearer ` (with the
+  space). Otherwise check `~/Library/Logs/xbloom-tunnel.log`, and that
   the Mac is awake (System Settings → Energy → prevent automatic sleeping).
 - **Machine says no beans / no water**: Claude will tell you; it cancels the brew.
 - **After updating this repo** (`git pull`): run `./setup.sh check` to restart the server.
