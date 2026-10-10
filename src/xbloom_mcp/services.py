@@ -52,7 +52,7 @@ def install() -> None:
 
 def _install_macos() -> None:
     # Older versions ran the tunnel as its own launchd agent; run-all owns it now.
-    for label in ("local.xbloom-tunnel", "co.common-tools.xbloom-tunnel"):
+    for label in ("local.xbloom-tunnel",):
         _run("launchctl", "bootout", f"gui/{os.getuid()}/{label}")
         (Path.home() / f"Library/LaunchAgents/{label}.plist").unlink(missing_ok=True)
     _run("zsh", str(REPO / "deploy/build-app.sh"), check=True)
@@ -140,7 +140,7 @@ def uninstall() -> None:
         _kill_supervisor()
         _login_item(add=False)
         shutil.rmtree(APP, ignore_errors=True)
-        for label in ("local.xbloom-tunnel", "co.common-tools.xbloom-tunnel"):
+        for label in ("local.xbloom-tunnel",):
             _run("launchctl", "bootout", f"gui/{os.getuid()}/{label}")
             (Path.home() / f"Library/LaunchAgents/{label}.plist").unlink(missing_ok=True)
     elif WINDOWS:
