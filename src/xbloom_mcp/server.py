@@ -309,7 +309,18 @@ def serve() -> None:
             allowed_origins=["https://claude.ai", "https://claude.com"],
         ),
     )
-    uvicorn.run(require_bearer(app, secret), host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(hold_machine_connection(require_bearer(app, secret)),
+                host="127.0.0.1", port=port, log_level="warning")
+
+
+def hold_machine_connection(app):
+    """ASGI wrapper: start holding the Bluetooth connection when the server starts."""
+    async def wrapped(scope, receive, send):
+        if scope["type"] == "lifespan":
+            machine.start()
+        await app(scope, receive, send)
+
+    return wrapped
 
 
 def require_bearer(app, secret: str):

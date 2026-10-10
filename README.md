@@ -141,8 +141,10 @@ Claude account who should be able to brew. Then try:
 3. The machine grinds for ~20 s (silently, as far as Claude can tell), then pours. A brew
    takes about 3 minutes.
 
-The phone app and this server can't both be connected at once. If Claude says it can't
-reach the machine, close the xBloom app on whoever's phone is nearby.
+The machine accepts one Bluetooth connection, and the server holds it permanently (that
+makes brews start immediately). So the xBloom phone app can't connect while the server
+runs, and if the app grabs the machine first, the server can't. Turn off Bluetooth for the
+xBloom app in your phone's settings (iOS: Settings → xBloom → Bluetooth).
 
 ## Tools Claude gets
 
