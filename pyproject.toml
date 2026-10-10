@@ -1,0 +1,24 @@
+[project]
+name = "xbloom-mcp"
+version = "0.1.0"
+description = "Brew on an xBloom Studio from Claude: design recipes from a photo of the bag, keep a shared library, and brew remotely over Bluetooth."
+readme = "README.md"
+authors = [
+    { name = "Marc Obieglo", email = "83326476+wrnsnng@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "mcp[cli]>=1.20",
+    "uvicorn>=0.54.0",
+    "xbloom-ble",
+]
+
+[project.scripts]
+xbloom-mcp = "xbloom_mcp:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+xbloom-ble = { git = "https://github.com/jack-song/xbloom-ble", rev = "e98402275a5724d47a877eb15a2d60ae25eeff04" }
