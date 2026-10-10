@@ -4,7 +4,7 @@
 set -e
 REPO="${0:A:h:h}"
 APP="$HOME/Applications/xBloom Bridge.app"
-pkill -f "xbloom-bridge" 2>/dev/null || true
+pkill -f run-server.sh 2>/dev/null || true; pkill -f "bin/xbloom-mcp" 2>/dev/null || true
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS"
 clang -O2 -DREPO_DIR="\"$REPO\"" -o "$APP/Contents/MacOS/xbloom-bridge" "$REPO/deploy/bridge.c"
 cat > "$APP/Contents/Info.plist" <<PLIST

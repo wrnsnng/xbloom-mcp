@@ -28,7 +28,8 @@ PY
 
 # ./setup.sh check — restart the bridge and test the machine connection.
 if [[ $1 == check ]]; then
-  pkill -f xbloom-bridge 2>/dev/null; pkill -f "bin/xbloom-mcp" 2>/dev/null; sleep 1
+  set +e
+  pkill -f run-server.sh; pkill -f "bin/xbloom-mcp"; sleep 1
   open "$HOME/Applications/xBloom Bridge.app"; sleep 6
   check_machine
   print "Connector URL: https://$(setting XBLOOM_MCP_HOSTS)/$(setting XBLOOM_MCP_SECRET)/mcp"
