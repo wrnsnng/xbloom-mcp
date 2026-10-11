@@ -141,8 +141,17 @@ Claude account who should be able to brew. Then try:
 3. The machine grinds for ~20 s (silently, as far as Claude can tell), then pours. A brew
    takes about 3 minutes.
 
-The machine accepts one Bluetooth connection, and the server holds it permanently (that
-makes brews start immediately). So the xBloom phone app can't connect while the server
+The server only connects while it's being used: a status check or brew connects, and it
+lets go after 10 minutes without activity, so the machine isn't kept awake (or beeping)
+all day. Two optional settings in the settings file (`env`, see Files and logs):
+
+| Setting | Effect |
+|---|---|
+| `XBLOOM_IDLE_MINUTES=10` | How long to stay connected after the last activity |
+| `XBLOOM_WARM_HOURS=6-10` | Also stay connected during these hours (here 6:00 to 9:59), so morning brews start instantly |
+
+Run `./setup.sh check` after changing them. The machine accepts one Bluetooth connection,
+and the server holds it while connected (that makes brews start immediately). So the xBloom phone app can't connect while the server
 runs, and if the app grabs the machine first, the server can't. Turn off Bluetooth for the
 xBloom app in your phone's settings (iOS: Settings → xBloom → Bluetooth).
 

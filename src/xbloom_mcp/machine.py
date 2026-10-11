@@ -1,16 +1,20 @@
-"""Bluetooth control of the xBloom over one long-lived connection.
+"""Bluetooth control of the xBloom over a connection held while it's in use.
 
-The server connects once and holds the link, reconnecting in the background if it
-drops. Finding the machine takes 5-30 s (more on a weak signal or right after a
-disconnect), so connecting per operation made brews slow and flaky. Holding the link
-also stops a phone app from taking the machine's single connection.
+Finding the machine takes 5-30 s (more on a weak signal or right after a disconnect),
+so connecting per operation made brews slow and flaky. Instead the server holds the
+link while someone is using it: any status check or brew connects and keeps it, and it
+is released after XBLOOM_IDLE_MINUTES without activity (default 10). Holding it all day
+keeps the machine in connected mode (and it beeps). XBLOOM_WARM_HOURS="6-10" also
+holds it during those hours so morning brews start instantly.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
+from datetime import datetime
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -42,6 +46,24 @@ SILENCE_S = 45.0
 LOST_CONTACT = ("lost contact with the machine during the brew (weak Bluetooth signal). "
                 "The machine finishes the brew on its own: check the cup. Don't cancel.")
 SEARCHING = "searching for the machine (a cold start can take up to a minute)"
+
+
+def _idle_s() -> float:
+    return float(os.environ.get("XBLOOM_IDLE_MINUTES") or 10) * 60
+
+
+def _in_warm_hours(now: datetime | None = None) -> bool:
+    """True inside XBLOOM_WARM_HOURS, e.g. "6-10" (6:00-9:59) or "22-2" (wraps midnight)."""
+    spec = os.environ.get("XBLOOM_WARM_HOURS", "").strip()
+    if not spec:
+        return False
+    try:
+        start, end = (int(x) for x in spec.split("-"))
+    except ValueError:
+        log.warning("ignoring XBLOOM_WARM_HOURS=%r (expected e.g. 6-10)", spec)
+        return False
+    hour = (now or datetime.now()).hour
+    return start <= hour < end if start <= end else (hour >= start or hour < end)
 
 
 @dataclass
@@ -108,6 +130,15 @@ class Machine:
         self._keeper: asyncio.Task | None = None
         self.current: BrewState | None = None
         self._task: asyncio.Task | None = None
+        self._last_activity = 0.0  # nothing requested yet: don't connect at startup
+
+    def touch(self) -> None:
+        """Mark activity: keeps (or starts) the connection for the idle window."""
+        self._last_activity = time.time()
+
+    def wanted(self) -> bool:
+        return (self.busy or time.time() - self._last_activity < _idle_s()
+                or _in_warm_hours())
 
     # --- connection ------------------------------------------------------------------
 
@@ -120,13 +151,20 @@ class Machine:
         return self._task is not None and not self._task.done()
 
     def start(self) -> None:
-        """Begin holding the connection (call once the event loop is running)."""
+        """Start the connection manager (call once the event loop is running)."""
         if self.address and (self._keeper is None or self._keeper.done()):
             self._keeper = asyncio.create_task(self._keep_connected())
 
     async def _keep_connected(self) -> None:
         delay = RECONNECT_MIN_S
         while True:
+            if not self.wanted():
+                if self._client is not None and not self._lock.locked():
+                    log.info("idle: releasing the machine")
+                    async with self._lock:
+                        await self._drop()
+                await asyncio.sleep(5.0)
+                continue
             if not self.connected and not self._lock.locked():
                 async with self._lock:
                     try:
@@ -180,6 +218,7 @@ class Machine:
 
     async def status(self) -> dict:
         """Report what the machine is doing, from the held connection."""
+        self.touch()
         if self.busy:
             return {"reachable": True, "state": "brewing", "brew": self.current.as_dict()}  # type: ignore[union-attr]
         async with self._lock:
@@ -200,11 +239,13 @@ class Machine:
         if self.busy:
             raise XBloomError("A brew is already running.")
         recipe.validate()
+        self.touch()
         self.current = BrewState(recipe.name, recipe.dose_g, recipe.total_water_ml)
         self._task = asyncio.create_task(self._run(recipe, self.current, on_finish))
         return self.current
 
     async def cancel(self) -> str:
+        self.touch()
         try:
             if self.busy and self.connected:
                 # The brew task holds the lock while it streams; send on the shared link.
@@ -295,6 +336,7 @@ class Machine:
             st.error = _friendly(exc)
             st.phase = "failed"
         finally:
+            self.touch()  # keep the link a while for status checks and the next cup
             st.done = True
             try:
                 on_finish(st)

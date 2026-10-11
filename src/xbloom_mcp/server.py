@@ -31,6 +31,8 @@ Controls the household xBloom Studio coffee machine: design pour-over recipes fo
 beans, keep a shared recipe library, and brew remotely.
 
 Workflow:
+- At the start of any coffee request, call machine_status. It also wakes the Bluetooth \
+link (held for ~10 minutes), so the brew later starts instantly.
 - Beans mentioned or photographed: read roaster, bean name, origin, process, roast level, \
 roast date and tasting notes. Call find_recipe first; reuse a saved recipe if one matches.
 - No match: if you can search the web, look for the roaster's own pour-over recipe and the \
